@@ -3,17 +3,46 @@ import numpy as np
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Dataset
 
-class AddGaussianNoise(object):
-    def __init__(self, mean=0.0, std=1.0):
-        self.mean = mean
-        self.std = std
+class AddNoise(object):
+    def __init__(self, noise_type='gaussian', params={}):
+        self.noise_type = noise_type
+        self.params = params
 
     def __call__(self, tensor):
-        noise = torch.randn(tensor.size()) * self.std + self.mean
-        return torch.clamp(tensor + noise, 0., 1.)
+        if self.noise_type == 'gaussian':
+            mean = self.params.get('mean', 0.0)
+            std = self.params.get('std', 1.0)
+            noise = torch.randn(tensor.size()) * std + mean
+            return torch.clamp(tensor + noise, 0., 1.)
+        
+        elif self.noise_type == 'salt_and_pepper':
+            amount = self.params.get('amount', 0.05)
+            salt_vs_pepper = self.params.get('salt_vs_pepper', 0.5)
+            
+            mask = torch.rand(tensor.size())
+            salt = mask < (amount * salt_vs_pepper)
+            pepper = (mask >= (amount * salt_vs_pepper)) & (mask < amount)
+            
+            tensor[salt] = 1.0
+            tensor[pepper] = 0.0
+            return tensor
+        
+        elif self.noise_type == 'speckle':
+            mean = self.params.get('mean', 0.0)
+            std = self.params.get('std', 0.1)
+            noise = torch.randn(tensor.size()) * std + mean
+            return torch.clamp(tensor + tensor * noise, 0., 1.)
+        
+        elif self.noise_type == 'poisson':
+            tensor = torch.clamp(tensor, 0., 1.)  # Clamp to [0, 1]
+            noise = torch.poisson(tensor * 255.0) / 255.0
+            return torch.clamp(noise, 0., 1.)  # Clamp result to [0, 1]
+        
+        else:
+            raise ValueError(f"Unsupported noise type: {self.noise_type}")
 
     def __repr__(self):
-        return self.__class__.__name__ + f'(mean={self.mean}, std={self.std})'
+        return self.__class__.__name__ + f'(noise_type={self.noise_type}, params={self.params})'
 
 class MyDataset(Dataset):
     def __init__(self, train=True, transform=None, noise_transform=None):
@@ -31,12 +60,12 @@ class MyDataset(Dataset):
     def __len__(self):
         return len(self.cifar10)
 
-def get_cifar10_dataloaders(batch_size, noise_mean=0.0, noise_std=0.1):
+def get_cifar10_dataloaders(batch_size, noise_type='gaussian', noise_params={}):
     transform = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize([0.4914, 0.4822, 0.4465], [0.247, 0.243, 0.261])  # 标准化
+        transforms.Normalize([0.4914, 0.4822, 0.4465], [0.247, 0.243, 0.261])
     ])
-    noise_transform = AddGaussianNoise(noise_mean, noise_std)
+    noise_transform = AddNoise(noise_type, noise_params)
     
     train_dataset = MyDataset(train=True, transform=transform, noise_transform=noise_transform)
     test_dataset = MyDataset(train=False, transform=transform, noise_transform=noise_transform)

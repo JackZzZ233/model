@@ -36,25 +36,33 @@ def main():
 
     #filter and noise
     #parser.add_argument("--noise_type",default=None,type=str,help="")
-    #parser.add_argument("--mean",default=None,type=float,help="")
-    #parser.add_argument("--std",default=None,type=float,help="")
+    parser.add_argument("--mean",default=None,type=float,help="")
+    parser.add_argument("--std",default=None,type=float,help="")
     parser.add_argument("--salt_prob",default=None,type=float,help="")
     parser.add_argument("--filter_type",default=None,type=str,help="")
     parser.add_argument("--kernel_size",default=None,type=float,help="")
     #
 
     #UNet
-    parser.add_argument("--noise_type",default=None,type=str,help="")
-    parser.add_argument("--mean",default=None,type=float,help="")
-    parser.add_argument("--std",default=None,type=float,help="")
+    parser.add_argument("--noise_type", default="gaussian", type=str, help="Type of noise to add (gaussian, salt_and_pepper, speckle, poisson)")
+    parser.add_argument("--noise_mean", default=0.0, type=float, help="Mean for Gaussian or Speckle noise")
+    parser.add_argument("--noise_std", default=0.1, type=float, help="Standard deviation for Gaussian or Speckle noise")
+    parser.add_argument("--noise_amount", default=0.05, type=float, help="Amount of Salt and Pepper noise")
+    parser.add_argument("--salt_vs_pepper", default=0.5, type=float, help="Ratio of salt vs pepper noise")
+
     parser.add_argument('-b', '--batchsize', metavar='B', type=int, nargs='?', default=16,help='Batch size', dest='batchsize')
     parser.add_argument('-l', '--learningrate', metavar='LR', type=float, nargs='?', default=0.0001,help='Learning rate', dest='lr')
     #
 
     args = parser.parse_args()
 
-    #UNet
-    train_loader, val_loader = get_cifar10_dataloaders(args.batchsize, args.mean, args.std)
+    noise_params = {
+    'mean': args.noise_mean,
+    'std': args.noise_std,
+    'amount': args.noise_amount,
+    'salt_vs_pepper': args.salt_vs_pepper
+    }
+    train_loader, val_loader = get_cifar10_dataloaders(args.batchsize, args.noise_type, noise_params)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = UNet().to(device)
     optimizer_Unet= optimizer = optim.Adam(model.parameters(), lr=args.lr)
