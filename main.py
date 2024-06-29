@@ -1,4 +1,5 @@
 import torch
+import os
 from torch import optim
 from torch.cuda.amp import GradScaler
 from inference_utils import SSIMLoss,psnr,lpips_fn,save_img_tensor
@@ -12,7 +13,7 @@ import cv2
 from noise import get_cifar10_dataloaders
 from unet_model import UNet
 import multiprocessing
-
+dir_checkpoint = 'checkpoints/'
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_selection", default="", type=str, help="The path of dev set.")
@@ -95,7 +96,7 @@ def main():
     import time
     args.measure = float("inf")
 
-    args.measureUnet = float("inf")
+    measureUnet = float("inf")
     
 
     if args.mixed_precision:
@@ -132,8 +133,16 @@ def main():
     #loss of unet
         print(f'Epoch {i + 1}/{1000}, Loss: {Unet_epoch_loss / len(train_loader)}')
         image_Unet=image0_Unet.clone()
+        model.eval()
         image_Unet=predict_image_tensor(model,image_Unet,device)
     #
+        if  i % 50 == 0:
+            try:
+                os.mkdir(dir_checkpoint)
+            except OSError:
+                pass
+            torch.save(model.state_dict(), dir_checkpoint + f'CP_epoch{i + 1}.pth')
+            print(f'Checkpoint {i + 1} saved !')
 
         if args.mixed_precision:
             with torch.autocast(device_type='cuda', dtype=torch.float16):
@@ -158,22 +167,22 @@ def main():
         min_value = criterion(image0,image).mean(-1).mean(-1).mean(-1).min()
         mean_value = criterion(image0,image).mean()
 
-        min_value_Unet=criterion_UNet(image0_Unet,image).mean(-1).mean(-1).mean(-1).min()
-        mean_value_Unet=criterion_UNet(image0_Unet,image).mean()
+        min_value_Unet=criterion_UNet(image_Unet,image).mean(-1).mean(-1).mean(-1).min()
+        mean_value_Unet=criterion_UNet(image_Unet,image).mean()
 
         if (args.strategy == "min") and (min_value < args.measure):
             args.measure = min_value
 
-            args.measureUnet = torch.tensor(min_value_Unet)
+            measureUnet = torch.tensor(min_value_Unet)
 
         if (args.strategy == "mean") and (mean_value < args.measure):
             args.measure = mean_value
 
-            args.measureUnet = torch.tensor(mean_value_Unet)
+            measureUnet = torch.tensor(mean_value_Unet)
 
         print("lowest loss now:",args.measure.item())
 
-        print("lowest Unet loss now:",args.measureUnet.item())
+        print("lowest Unet loss now:",measureUnet.item())
 
         if args.distance_metric == "lpips":
             loss = loss.mean()
