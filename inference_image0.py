@@ -138,13 +138,13 @@ def get_image0(args):
         save_img_tensor(image0,"image0_sd_not_generated.png")
     
     #add_noise
-    if args.noise_type !=None:
+    if args.noise_type_pics !=None:
         image0 = add_noise(
             image0, 
-            noise_type=args.noise_type, 
-            mean=args.mean, 
-            std=args.std, 
-            salt_prob=args.salt_prob, 
+            noise_type=args.noise_type_pics, 
+            mean=args.mean_pic, 
+            std=args.std_pic, 
+            salt_prob=args.salt_prob_pic, 
         )
         save_img_tensor(image0, "image0_with_noise.png")
     

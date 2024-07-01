@@ -1,4 +1,5 @@
 import torch
+import os
 from torch import optim
 from torch.cuda.amp import GradScaler
 from inference_utils import SSIMLoss,psnr,lpips_fn,save_img_tensor
@@ -12,7 +13,7 @@ import cv2
 from noise import get_cifar10_dataloaders
 from unet_model import UNet
 import multiprocessing
-
+dir_checkpoint = 'checkpoints/'
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_selection", default="", type=str, help="The path of dev set.")
@@ -33,31 +34,40 @@ def main():
     parser.add_argument("--input_selection_model_type", default=None, type=str, help="The path of dev set.")
     parser.add_argument("--input_selection_model_path", default=None, type=str, help="The path of dev set.")
 
-    #filter and noise
-    #parser.add_argument("--noise_type",default=None,type=str,help="")
-    #parser.add_argument("--mean",default=None,type=float,help="")
-    #parser.add_argument("--std",default=None,type=float,help="")
-    parser.add_argument("--salt_prob",default=None,type=float,help="")
+    #filter and noise for pic
+    parser.add_argument("--noise_type_pics",default=None,type=str,help="")
+    parser.add_argument("--mean_pic",default=None,type=float,help="")
+    parser.add_argument("--std_pic",default=None,type=float,help="")
+    parser.add_argument("--salt_prob_pic",default=None,type=float,help="")
     parser.add_argument("--filter_type",default=None,type=str,help="")
     parser.add_argument("--kernel_size",default=None,type=float,help="")
     #
 
-    #UNet
-    parser.add_argument("--noise_type",default=None,type=str,help="")
-    parser.add_argument("--mean",default=None,type=float,help="")
-    parser.add_argument("--std",default=None,type=float,help="")
+    #UNet and noise for dataset
+    parser.add_argument("--noise_type", default="gaussian", type=str, help="Type of noise to add (gaussian, salt_and_pepper, speckle, poisson)")
+    parser.add_argument("--noise_mean", default=0.0, type=float, help="Mean for Gaussian or Speckle noise")
+    parser.add_argument("--noise_std", default=0.1, type=float, help="Standard deviation for Gaussian or Speckle noise")
+    parser.add_argument("--noise_amount", default=0.05, type=float, help="Amount of Salt and Pepper noise")
+    parser.add_argument("--salt_vs_pepper", default=0.5, type=float, help="Ratio of salt vs pepper noise")
+
     parser.add_argument('-b', '--batchsize', metavar='B', type=int, nargs='?', default=16,help='Batch size', dest='batchsize')
     parser.add_argument('-l', '--learningrate', metavar='LR', type=float, nargs='?', default=0.0001,help='Learning rate', dest='lr')
     #
 
     args = parser.parse_args()
 
-    #UNet
-    train_loader, val_loader = get_cifar10_dataloaders(args.batchsize, args.mean, args.std)
+#Unet
+    noise_params = {
+    'mean': args.noise_mean,
+    'std': args.noise_std,
+    'amount': args.noise_amount,
+    'salt_vs_pepper': args.salt_vs_pepper
+    }
+    train_loader, val_loader = get_cifar10_dataloaders(args.batchsize, args.noise_type, noise_params)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = UNet().to(device)
     optimizer_Unet= optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    criterion_UNet = torch.nn.MSELoss()
+    criterion_UNet = torch.nn.MSELoss(reduction='none')
     #
 
     args.cur_model = get_model(args.model_type,args.model_path_,args)
@@ -132,20 +142,28 @@ def main():
     #loss of unet
         print(f'Epoch {i + 1}/{1000}, Loss: {Unet_epoch_loss / len(train_loader)}')
         image_Unet=image0_Unet.clone()
+        model.eval()
         image_Unet=predict_image_tensor(model,image_Unet,device)
     #
+        if  i % 50 == 0:
+            try:
+                os.mkdir(dir_checkpoint)
+            except OSError:
+                pass
+            torch.save(model.state_dict(), dir_checkpoint + f'CP_epoch{i + 1}.pth')
+            print(f'Checkpoint {i + 1} saved !')
 
         if args.mixed_precision:
             with torch.autocast(device_type='cuda', dtype=torch.float16):
                 image = from_noise_to_image(args,args.cur_model,cur_noise,args.model_type)
                 loss = criterion(image0,image).mean()
 
-                loss_Unet=criterion_UNet(image0_Unet,image).mean()
+                loss_Unet_Check=criterion_UNet(image_Unet,image).mean()
         else:
             image = from_noise_to_image(args,args.cur_model,cur_noise,args.model_type)
             loss = criterion(image0.detach(),image).mean()
 
-            loss_Unet=criterion_UNet(image0_Unet.detach(),image).mean()
+            loss_Unet_Check=criterion_UNet(image_Unet.detach(),image).mean()
 
         if i%100==0:
             epoch_num_str=str(i)
@@ -158,18 +176,18 @@ def main():
         min_value = criterion(image0,image).mean(-1).mean(-1).mean(-1).min()
         mean_value = criterion(image0,image).mean()
 
-        min_value_Unet=criterion_UNet(image0_Unet,image).mean(-1).mean(-1).mean(-1).min()
-        mean_value_Unet=criterion_UNet(image0_Unet,image).mean()
+        min_value_Unet=criterion_UNet(image_Unet,image).mean(-1).mean(-1).mean(-1).min()
+        mean_value_Unet=criterion_UNet(image_Unet,image).mean()
 
         if (args.strategy == "min") and (min_value < args.measure):
             args.measure = min_value
 
-            args.measureUnet = torch.tensor(min_value_Unet)
+            args.measureUnet = min_value_Unet
 
         if (args.strategy == "mean") and (mean_value < args.measure):
             args.measure = mean_value
 
-            args.measureUnet = torch.tensor(mean_value_Unet)
+            args.measureUnet = mean_value_Unet
 
         print("lowest loss now:",args.measure.item())
 
@@ -180,7 +198,7 @@ def main():
         print("loss "+args.input_selection+" "+args.distance_metric+":",loss.item())
         
         #
-        print("Unet Loss:",loss_Unet.item())
+        print("Unet Loss:",loss_Unet_Check.item())
 #
         if args.mixed_precision:
             optimizer.zero_grad()
