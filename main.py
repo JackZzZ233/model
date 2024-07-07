@@ -1,4 +1,5 @@
 import torch
+import os
 from torch import optim
 from torch.cuda.amp import GradScaler
 from inference_utils import SSIMLoss,psnr,lpips_fn,save_img_tensor
@@ -12,7 +13,7 @@ import cv2
 from noise import get_cifar10_dataloaders
 from unet_model import UNet
 import multiprocessing
-
+dir_checkpoint = 'checkpoints/'
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_selection", default="", type=str, help="The path of dev set.")
@@ -33,41 +34,104 @@ def main():
     parser.add_argument("--input_selection_model_type", default=None, type=str, help="The path of dev set.")
     parser.add_argument("--input_selection_model_path", default=None, type=str, help="The path of dev set.")
 
-    #filter and noise
-    #parser.add_argument("--noise_type",default=None,type=str,help="")
-    #parser.add_argument("--mean",default=None,type=float,help="")
-    #parser.add_argument("--std",default=None,type=float,help="")
-    parser.add_argument("--salt_prob",default=None,type=float,help="")
+    #filter and noise for pic
+    parser.add_argument("--noise_type_pics",default=None,type=str,help="")
+    parser.add_argument("--mean_pic",default=None,type=float,help="")
+    parser.add_argument("--std_pic",default=None,type=float,help="")
+    parser.add_argument("--salt_prob_pic",default=None,type=float,help="")
     parser.add_argument("--filter_type",default=None,type=str,help="")
     parser.add_argument("--kernel_size",default=None,type=float,help="")
     #
 
-    #UNet
-    parser.add_argument("--noise_type",default=None,type=str,help="")
-    parser.add_argument("--mean",default=None,type=float,help="")
-    parser.add_argument("--std",default=None,type=float,help="")
+    #UNet and noise for dataset
+    parser.add_argument("--noise_type", default="gaussian", type=str, help="Type of noise to add (gaussian, salt_and_pepper, speckle, poisson)")
+    parser.add_argument("--noise_mean", default=0.0, type=float, help="Mean for Gaussian or Speckle noise")
+    parser.add_argument("--noise_std", default=0.1, type=float, help="Standard deviation for Gaussian or Speckle noise")
+    parser.add_argument("--noise_amount", default=0.05, type=float, help="Amount of Salt and Pepper noise")
+    parser.add_argument("--salt_vs_pepper", default=0.5, type=float, help="Ratio of salt vs pepper noise")
+
     parser.add_argument('-b', '--batchsize', metavar='B', type=int, nargs='?', default=16,help='Batch size', dest='batchsize')
     parser.add_argument('-l', '--learningrate', metavar='LR', type=float, nargs='?', default=0.0001,help='Learning rate', dest='lr')
     #
 
+    #AE
+    parser.add_argument("--AE",default=None,type=str,help="")
+    parser.add_argument("--pretrained",default=None,type=str,help="")
+
     args = parser.parse_args()
 
-    #UNet
-    train_loader, val_loader = get_cifar10_dataloaders(args.batchsize, args.mean, args.std)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = UNet().to(device)
-    optimizer_Unet= optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    criterion_UNet = torch.nn.MSELoss()
-    #
+
+
 
     args.cur_model = get_model(args.model_type,args.model_path_,args)
     image0, gt_noise = get_image0(args)
     image0 = image0.detach()
     image0_Unet=image0.clone()
+    image0_AE=image0.clone()
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     #image0=image0.squeeze(0).cpu().numpy().transpose(1, 2, 0)  
     #image0 = cv2.GaussianBlur(image0, (5, 5), 0)
     #image0 = torch.tensor(image0.transpose(2, 0, 1)).unsqueeze(0).cuda().float() 
     init_noise = get_init_noise(args,args.model_type,args.cur_model,bs=args.bs)
+
+#AE
+    if(args.AE is not None):
+        train_loader_AE, _ = get_cifar10_dataloaders(batch_size=16, add_noise=False)
+    
+        autoencoder=UNet().to(device)
+        optimizer_autoencoder = optim.Adam(autoencoder.parameters(), lr=0.00001)
+        criterion_autoencoder = torch.nn.MSELoss()
+    
+        for ae in range(0,200):
+            autoencoder.train()
+            epoch_loss_AE = 0
+            global_step_AE = 0
+            for batch in train_loader_AE:
+                src = batch['src']
+                target = batch['target']
+                src = src.to(device=device, dtype=torch.float32)
+                target = target.to(device=device, dtype=torch.float32)
+
+                optimizer_autoencoder.zero_grad()
+                output = autoencoder(src)
+                loss_autoencoder = criterion_autoencoder(output, target)
+                epoch_loss_AE += loss_autoencoder.item()
+                loss_autoencoder.backward()
+                optimizer_autoencoder.step()
+                if global_step_AE % 100 == 0:
+                    print('Global step of AE:', global_step_AE, ' Loss:', loss_autoencoder.item())
+                global_step_AE += 1  
+            print(f'EpochAE {ae + 1}/{200}, Loss: {epoch_loss_AE / len(train_loader_AE)}')         
+
+        autoencoder.eval()
+        with torch.no_grad():
+            image_autoencoder = autoencoder(image0_AE)
+
+        loss_autoencoder_check = criterion_autoencoder(image_autoencoder, image0).mean()
+        print("Autoencoder Loss:", loss_autoencoder_check.item())
+        torch.save(autoencoder.state_dict(), 'autoencoder.pth')
+#
+
+#Unet
+    noise_params = {
+    'mean': args.noise_mean,
+    'std': args.noise_std,
+    'amount': args.noise_amount,
+    'salt_vs_pepper': args.salt_vs_pepper
+    }
+    train_loader, val_loader = get_cifar10_dataloaders(args.batchsize, args.noise_type, noise_params)
+    if(args.pretrained is not None):
+        pretrained_autoencoder = UNet().to(device)
+        pretrained_autoencoder.load_state_dict(torch.load('autoencoder.pth'))
+        model = UNet(pretrained_autoencoder=pretrained_autoencoder).to(device)
+    if(args.pretrained is None):
+        model=UNet().to(device)
+    optimizer_Unet= optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    criterion_UNet = torch.nn.MSELoss(reduction='none')
+    
+
+    
+    #
 
     if args.model_type in ["sd"]:
         cur_noise = torch.nn.Parameter(torch.tensor(init_noise)).cuda()
@@ -120,7 +184,7 @@ def main():
 
                 optimizer_Unet.zero_grad()
                 src_pred = model(src)
-                loss_Unet = criterion_UNet(src_pred, target)
+                loss_Unet = criterion_UNet(src_pred, target).mean()
                 Unet_epoch_loss += loss_Unet.item()
                 loss_Unet.backward()
                 optimizer_Unet.step()
@@ -132,20 +196,28 @@ def main():
     #loss of unet
         print(f'Epoch {i + 1}/{1000}, Loss: {Unet_epoch_loss / len(train_loader)}')
         image_Unet=image0_Unet.clone()
+        model.eval()
         image_Unet=predict_image_tensor(model,image_Unet,device)
     #
+        if  i % 50 == 0:
+            try:
+                os.mkdir(dir_checkpoint)
+            except OSError:
+                pass
+            torch.save(model.state_dict(), dir_checkpoint + f'CP_epoch{i + 1}.pth')
+            print(f'Checkpoint {i + 1} saved !')
 
         if args.mixed_precision:
             with torch.autocast(device_type='cuda', dtype=torch.float16):
                 image = from_noise_to_image(args,args.cur_model,cur_noise,args.model_type)
                 loss = criterion(image0,image).mean()
 
-                loss_Unet=criterion_UNet(image0_Unet,image).mean()
+                loss_Unet_Check=criterion_UNet(image_Unet,image).mean()
         else:
             image = from_noise_to_image(args,args.cur_model,cur_noise,args.model_type)
             loss = criterion(image0.detach(),image).mean()
 
-            loss_Unet=criterion_UNet(image0_Unet.detach(),image).mean()
+            loss_Unet_Check=criterion_UNet(image_Unet.detach(),image).mean()
 
         if i%100==0:
             epoch_num_str=str(i)
@@ -158,18 +230,18 @@ def main():
         min_value = criterion(image0,image).mean(-1).mean(-1).mean(-1).min()
         mean_value = criterion(image0,image).mean()
 
-        min_value_Unet=criterion_UNet(image0_Unet,image).mean(-1).mean(-1).mean(-1).min()
-        mean_value_Unet=criterion_UNet(image0_Unet,image).mean()
+        min_value_Unet=criterion_UNet(image_Unet,image).mean(-1).mean(-1).mean(-1).min()
+        mean_value_Unet=criterion_UNet(image_Unet,image).mean()
 
         if (args.strategy == "min") and (min_value < args.measure):
             args.measure = min_value
 
-            args.measureUnet = torch.tensor(min_value_Unet)
+            args.measureUnet = min_value_Unet
 
         if (args.strategy == "mean") and (mean_value < args.measure):
             args.measure = mean_value
 
-            args.measureUnet = torch.tensor(mean_value_Unet)
+            args.measureUnet = mean_value_Unet
 
         print("lowest loss now:",args.measure.item())
 
@@ -180,7 +252,7 @@ def main():
         print("loss "+args.input_selection+" "+args.distance_metric+":",loss.item())
         
         #
-        print("Unet Loss:",loss_Unet.item())
+        print("Unet Loss:",loss_Unet_Check.item())
 #
         if args.mixed_precision:
             optimizer.zero_grad()

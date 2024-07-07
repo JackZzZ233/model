@@ -24,9 +24,11 @@ class UNet(nn.Module):
      Returns:
          out (torch.Tensor) : Prediction of the segmentation map
      """
-    def __init__(self, n_channels=3, base_filter_num=64, num_blocks=4, num_classes=3, mode='2D', dropout=False, dropout_rate=0.3, use_pooling=True):
+    def __init__(self, n_channels=3, base_filter_num=64, num_blocks=4, num_classes=3, mode='2D', dropout=False, dropout_rate=0.3, use_pooling=True,pretrained_autoencoder=None):
 
         super(UNet, self).__init__()
+        if pretrained_autoencoder is not None:
+            self.load_pretrained_weights(pretrained_autoencoder)
         self.contracting_path = nn.ModuleList()
         self.expanding_path = nn.ModuleList()
         self.downsampling_ops = nn.ModuleList()
@@ -201,3 +203,12 @@ class UNet(nn.Module):
         x = self.output(x)
 
         return x
+    
+    def load_pretrained_weights(self, autoencoder):
+        # Load encoder weights
+        for i, block in enumerate(self.contracting_path):
+            block.load_state_dict(autoencoder.encoder[i].state_dict())
+
+        # Load decoder weights
+        for i, block in enumerate(self.expanding_path):
+            block.load_state_dict(autoencoder.decoder[i].state_dict())
