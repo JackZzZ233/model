@@ -24,9 +24,12 @@ class UNet(nn.Module):
      Returns:
          out (torch.Tensor) : Prediction of the segmentation map
      """
-    def __init__(self, n_channels=3, base_filter_num=64, num_blocks=4, num_classes=3, mode='2D', dropout=False, dropout_rate=0.3, use_pooling=True):
+    def __init__(self, n_channels=3, base_filter_num=64, num_blocks=4, num_classes=3, mode='2D', dropout=False, dropout_rate=0.3, use_pooling=True,pretrained_autoencoder=None):
 
         super(UNet, self).__init__()
+        #
+        self.pretrained_autoencoder = pretrained_autoencoder
+        #
         self.contracting_path = nn.ModuleList()
         self.expanding_path = nn.ModuleList()
         self.downsampling_ops = nn.ModuleList()
@@ -158,7 +161,10 @@ class UNet(nn.Module):
                                     kernel_size=1)
 
     def forward(self, x, seeds=None):
-
+        #
+        if self.pretrained_autoencoder is not None:
+            x = self.pretrained_autoencoder(x)
+#
         if self.mode == '2D':
             h, w = x.shape[-2:]
         else:
@@ -201,3 +207,5 @@ class UNet(nn.Module):
         x = self.output(x)
 
         return x
+    
+  
