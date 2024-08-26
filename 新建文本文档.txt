@@ -1,0 +1,39 @@
+Unet Loss: 0.4689645767211914 for genertared image using noise step 198
+lowest Unet loss now: 1.1218254566192627 real image using noise step 10
+lowest Unet loss now: 0.5484428405761719 belonging(same model) using noise step 10
+final lowest Unet loss:  0.9350990653038025 belonging(other model vae) using noise step 10
+lowest Unet loss now: 0.7055680155754089 belonging(other model vae)using noise step 145
+lowest Unet loss now: 0.547622561454773 using noise step 150 cifar 10
+final lowest Unet loss:  0.9504165053367615 using noise step 150 cifar 10
+final lowest Unet loss:  0.8708235621452332 using noise step 10 cifar 10
+final lowest Unet loss:  0.8492255210876465 using noise step 150 cifar 10
+lowest Unet loss now: 1.0714342594146729 using noise step 10 cifar 10
+lowest Unet loss now: 1.0170512199401855 using noise step 10 cifar 10
+final lowest Unet loss:  1.2464361190795898 using noise step 10 cifar 10\
+lowest Unet loss now: 1.0873030424118042 using noise step 150 cifar 10
+final lowest Unet loss:  1.061870813369751 using noise step 150 cifar 10
+final lowest Unet loss:  1.3514760732650757 using noise step 10 cifar 10
+final lowest Unet loss:  1.0230627059936523 using noise step 10 cifar 10 
+1.145505428314209 USING NOISE STEP 10 CIFAR 10
+0.9766530990600586 USING NOISE STEP 150 CIFAR 10
+lowest Unet loss now: 0.4693187475204468 USING NOISE STEP 150 CIFAR 10
+final lowest Unet loss:  1.1907358169555664 USING NOISE STEP 150 CIFAR 10
+final lowest Unet loss:  0.6672627329826355 using noise step 150 cifar 10
+final lowest Unet loss:  1.0695817470550537 using noise step  150 cifar 10
+final lowest Unet loss:  0.4614115357398987 using noise step 150 cfiar 10
+lowest Unet loss now: 1.1158322095870972 using noise step 150 cifar 10
+final lowest Unet loss:  0.8849457502365112 using noise steo 150 ciar 10
+final lowest Unet loss:  0.8191832304000854 using noise step 150 cifar 10
+final lowest Unet loss:  0.28561925888061523 using noise step 150 cifar 10
+final lowest Unet loss:  0.8553528785705566using noise step 150 cifar 10
+final lowest Unet loss:  1.0366172790527344using noise step 150 cifar 10
+final lowest Unet loss:  0.7696561813354492using noise step 150 cifar 10
+nal lowest Unet loss:  0.913877010345459using noise step 150 cifar 10
+final lowest Unet loss:  0.9603862166404724using noise step 150 cifar 10
+final lowest Unet loss:  1.2330037355422974using noise step 150 cifar 10
+final lowest Unet loss:  0.47887784242630005 using uoise step 10 cifar 10
+final lowest Unet loss:  1.1409413814544678 using  noise step 150 cifar 10
+final lowest Unet loss:  0.517053484916687 using noise setp 150 cifar 10
+final lowest Unet loss:  0.822105884552002
+final lowest Unet loss:  0.6121780872344971
+final lowest Unet loss:  1.2756141424179077
