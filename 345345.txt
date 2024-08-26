@@ -1,0 +1,1 @@
+python main.py --model_type dcgan_cifar10 --input_selection use_cifar10_image0 --distance_metric l2 --bs 1 --num_iter 1500 --strategy min --lr 0.1 --noise_type salt_and_pepper --noise_amount 0.05 --salt_vs_pepper 0.5 --noise_type_pic salt_pepper --salt_prob_pic 0.05  --pretrained T --learningrate 0.000001
